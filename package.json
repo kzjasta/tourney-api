@@ -1,0 +1,40 @@
+{
+  "name": "tourney-api",
+  "version": "1.0.0",
+  "description": "API for creating various league and tournament formats",
+  "main": "index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "nodemon --exec yarn restart",
+    "restart": "rimraf dist && npm run build && npm run start",
+    "build": "babel src --out-dir dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kzjasta/tourney-api.git"
+  },
+  "author": "Kieran Small",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kzjasta/tourney-api/issues"
+  },
+  "homepage": "https://github.com/kzjasta/tourney-api#readme",
+  "dependencies": {
+    "express": "^4.16.4",
+    "cors": "^2.8.5",
+    "dotenv": "^8.2.0",
+    "lodash": "^4.17.21",
+    "mongoose": "^5.12.5",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.18.3",
+    "@babel/cli": "^7.0.0",
+    "@babel/core": "^7.0.0",
+    "@babel/plugin-proposal-class-properties": "^7.0.0",
+    "@babel/plugin-proposal-object-rest-spread": "^7.0.0",
+    "@babel/preset-env": "^7.0.0",
+    "babel-core": "7.0.0-bridge.0",
+    "rimraf": "^2.6.2"
+  }
+}
