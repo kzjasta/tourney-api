@@ -26,6 +26,7 @@ const createUser = async () => {
   return User.create({
     username: 'coach',
     email: 'coach@example.com',
+    password: 'password123',
   });
 };
 
@@ -46,6 +47,7 @@ describe('Player model - jersey number uniqueness per team', () => {
       lastName: 'Smith',
       team: team._id,
       jerseyNumber: 10,
+      createdBy: user._id,
     });
 
     const secondPlayer = new Player({
@@ -53,6 +55,7 @@ describe('Player model - jersey number uniqueness per team', () => {
       lastName: 'Jones',
       team: team._id,
       jerseyNumber: 10,
+      createdBy: user._id,
     });
 
     await expect(secondPlayer.save()).rejects.toThrow(
@@ -69,6 +72,7 @@ describe('Player model - jersey number uniqueness per team', () => {
       lastName: 'Smith',
       team: team._id,
       jerseyNumber: 10,
+      createdBy: user._id,
     });
 
     const player2 = await Player.create({
@@ -76,6 +80,7 @@ describe('Player model - jersey number uniqueness per team', () => {
       lastName: 'Jones',
       team: team._id,
       jerseyNumber: 11,
+      createdBy: user._id,
     });
 
     expect(player1.jerseyNumber).toBe(10);
@@ -94,6 +99,7 @@ describe('Player model - jersey number uniqueness per team', () => {
       lastName: 'Smith',
       team: teamA._id,
       jerseyNumber: 10,
+      createdBy: user._id,
     });
 
     const player2 = await Player.create({
@@ -101,6 +107,7 @@ describe('Player model - jersey number uniqueness per team', () => {
       lastName: 'Jones',
       team: teamB._id,
       jerseyNumber: 10,
+      createdBy: user._id,
     });
 
     expect(player1.jerseyNumber).toBe(10);

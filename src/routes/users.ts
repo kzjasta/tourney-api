@@ -1,108 +1,102 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import User from '../models/User';
 import Team from '../models/Team';
 import { idQuery } from '../lib/idQuery';
-import { parseQueryParams, handleGenericError } from '../utils/utils';
+import { HttpError } from '../lib/httpError';
+import { parseQueryParams } from '../utils/utils';
+import {
+  assertSelfOrAdmin,
+  currentUser,
+  requireRole,
+} from '../middleware/auth';
 
 const router = Router();
 
-const userResponse = (user: any) => ({
+const userResponse = (user: {
+  uuid: string;
+  username: string;
+  email: string;
+  role: string;
+}) => ({
   uuid: user.uuid,
   username: user.username,
   email: user.email,
+  role: user.role,
 });
 
 /**
- * POST /users - Create a new user
- * Body: { username: string, email: string }
+ * GET /users - List users (admin only; optional ?limit=, ?offset=)
  */
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const { username, email } = req.body;
-
-    if (!username || typeof username !== 'string' || !username.trim()) {
-      return res.status(400).json({ error: 'Username is required' });
+router.get(
+  '/',
+  requireRole('admin'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { limit, offset } = parseQueryParams(req.query);
+      const users = await User.find()
+        .select('uuid username email role')
+        .skip(offset)
+        .limit(limit)
+        .lean();
+      res.json(users);
+    } catch (err: unknown) {
+      next(err);
     }
-
-    if (!email || typeof email !== 'string' || !email.trim()) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
-
-    const user = await User.create({
-      username: username.trim(),
-      email: email.trim().toLowerCase(),
-    });
-
-    res.status(201).json(userResponse(user));
-  } catch (err: unknown) {
-    console.error(err);
-    if (err && typeof err === 'object' && 'code' in err && err.code === 11000) {
-      return res.status(409).json({
-        error: 'A user with this email or username already exists',
-      });
-    }
-    res.status(500).json({ error: 'Failed to create user' });
   }
-});
+);
 
 /**
- * GET /users - List users (optional ?limit=, ?offset=)
+ * GET /users/:id - Get one user by id (self or admin)
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { limit, offset } = parseQueryParams(req.query);
-    const users = await User.find()
-      .select('uuid username email')
-      .skip(offset)
-      .limit(limit)
-      .lean();
-    res.json(users);
-  } catch (err: unknown) {
-    handleGenericError(res, err, 'Failed to list users');
-  }
-});
-
-/**
- * GET /users/:id - Get one user by id (uuid or ObjectId)
- */
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
+    const auth = currentUser(req);
     const user = await User.findOne(idQuery(req.params.id))
-      .select('uuid username email')
+      .select('uuid username email role')
       .lean();
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      throw new HttpError(404, 'User not found');
     }
-    res.json(user);
+    assertSelfOrAdmin(user._id as never, auth);
+    res.json(userResponse(user as never));
   } catch (err: unknown) {
-    handleGenericError(res, err, 'Failed to get user');
+    next(err);
   }
 });
 
 /**
- * PUT /users/:id - Update user (partial: username?, email?)
+ * PUT /users/:id - Update user (self or admin; partial: username?, email?)
  */
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const auth = currentUser(req);
     const user = await User.findOne(idQuery(req.params.id)).exec();
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      throw new HttpError(404, 'User not found');
+    }
+    assertSelfOrAdmin(user._id as never, auth);
+
+    const { username, email, role, password, tokenVersion } = req.body;
+    if (
+      role !== undefined ||
+      password !== undefined ||
+      tokenVersion !== undefined
+    ) {
+      throw new HttpError(
+        400,
+        'role, password and tokenVersion cannot be changed here'
+      );
     }
 
-    const { username, email } = req.body;
     if (username !== undefined) {
       if (typeof username !== 'string' || !username.trim()) {
-        return res
-          .status(400)
-          .json({ error: 'Username must be a non-empty string' });
+        throw new HttpError(400, 'Username must be a non-empty string');
       }
       user.username = username.trim();
     }
     if (email !== undefined) {
       if (typeof email !== 'string' || !email.trim()) {
-        return res
-          .status(400)
-          .json({ error: 'Email must be a non-empty string' });
+        throw new HttpError(400, 'Email must be a non-empty string');
       }
       user.email = email.trim().toLowerCase();
     }
@@ -110,38 +104,37 @@ router.put('/:id', async (req: Request, res: Response) => {
     await user.save();
     res.json(userResponse(user));
   } catch (err: unknown) {
-    console.error(err);
-    if (err && typeof err === 'object' && 'code' in err && err.code === 11000) {
-      return res.status(409).json({
-        error: 'A user with this email or username already exists',
-      });
-    }
-    res.status(500).json({ error: 'Failed to update user' });
+    next(err);
   }
 });
 
 /**
- * DELETE /users/:id - Delete user (409 if user owns teams)
+ * DELETE /users/:id - Delete user (self or admin; 409 if user owns teams)
  */
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    const user = await User.findOne(idQuery(req.params.id)).exec();
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+router.delete(
+  '/:id',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const user = await User.findOne(idQuery(req.params.id)).exec();
+      if (!user) {
+        throw new HttpError(404, 'User not found');
+      }
+      assertSelfOrAdmin(user._id as never, auth);
 
-    const teamCount = await Team.countDocuments({ createdBy: user._id }).exec();
-    if (teamCount > 0) {
-      return res
-        .status(409)
-        .json({ error: 'Cannot delete user that owns teams' });
-    }
+      const teamCount = await Team.countDocuments({
+        createdBy: user._id,
+      }).exec();
+      if (teamCount > 0) {
+        throw new HttpError(409, 'Cannot delete user that owns teams');
+      }
 
-    await User.deleteOne({ _id: user._id }).exec();
-    res.status(204).send();
-  } catch (err: unknown) {
-    handleGenericError(res, err, 'Failed to delete user');
+      await User.deleteOne({ _id: user._id }).exec();
+      res.status(204).send();
+    } catch (err: unknown) {
+      next(err);
+    }
   }
-});
+);
 
 export default router;

@@ -1,405 +1,237 @@
 import request from 'supertest';
-import mongoose from 'mongoose';
-import User from '../models/User';
-import Team from '../models/Team';
 import { app } from '../app';
+import User from '../models/User';
+import {
+  clearTestDb,
+  connectTestDb,
+  createTeam,
+  createUser,
+  disconnectTestDb,
+  tokenFor,
+} from './helpers/db';
 
-jest.mock('../models/User');
-jest.mock('../models/Team');
-
-const mockedUser = User as jest.Mocked<typeof User>;
-const mockedTeam = Team as jest.Mocked<typeof Team>;
-const mockUserId = new mongoose.Types.ObjectId();
-const mockUserDoc = {
-  _id: mockUserId,
-  uuid: 'user-uuid-123',
-  username: 'johndoe',
-  email: 'john@example.com',
-};
+beforeAll(connectTestDb, 60000);
+afterAll(disconnectTestDb);
+beforeEach(clearTestDb);
 
 describe('Users routes', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/users');
 
-  describe('POST /users', () => {
-    it('creates a user and returns 201 with user data', async () => {
-      const created = {
-        uuid: 'user-uuid-123',
-        username: 'johndoe',
-        email: 'john@example.com',
-      };
-      mockedUser.create.mockResolvedValue(created as never);
-
-      const res = await request(app)
-        .post('/users')
-        .send({ username: 'johndoe', email: 'john@example.com' });
-
-      expect(res.status).toBe(201);
-      expect(res.body).toEqual({
-        uuid: 'user-uuid-123',
-        username: 'johndoe',
-        email: 'john@example.com',
-      });
-      expect(mockedUser.create).toHaveBeenCalledWith({
-        username: 'johndoe',
-        email: 'john@example.com',
-      });
-    });
-
-    it('trims username and lowercases email', async () => {
-      mockedUser.create.mockResolvedValue({
-        uuid: 'u',
-        username: 'trimmed',
-        email: 'lower@example.com',
-      } as never);
-
-      await request(app)
-        .post('/users')
-        .send({ username: '  trimmed  ', email: 'LOWER@Example.com' });
-
-      expect(mockedUser.create).toHaveBeenCalledWith({
-        username: 'trimmed',
-        email: 'lower@example.com',
-      });
-    });
-
-    it('returns 400 when username is missing', async () => {
-      const res = await request(app)
-        .post('/users')
-        .send({ email: 'john@example.com' });
-
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: 'Username is required' });
-      expect(mockedUser.create).not.toHaveBeenCalled();
-    });
-
-    it('returns 400 when username is empty string', async () => {
-      const res = await request(app)
-        .post('/users')
-        .send({ username: '   ', email: 'john@example.com' });
-
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: 'Username is required' });
-      expect(mockedUser.create).not.toHaveBeenCalled();
-    });
-
-    it('returns 400 when email is missing', async () => {
-      const res = await request(app)
-        .post('/users')
-        .send({ username: 'johndoe' });
-
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: 'Email is required' });
-      expect(mockedUser.create).not.toHaveBeenCalled();
-    });
-
-    it('returns 400 when email is empty string', async () => {
-      const res = await request(app)
-        .post('/users')
-        .send({ username: 'johndoe', email: '   ' });
-
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: 'Email is required' });
-      expect(mockedUser.create).not.toHaveBeenCalled();
-    });
-
-    it('returns 409 when email or username already exists (duplicate key)', async () => {
-      const err = new Error('E11000 duplicate key');
-      (err as Error & { code?: number }).code = 11000;
-      mockedUser.create.mockRejectedValue(err);
-
-      const res = await request(app)
-        .post('/users')
-        .send({ username: 'johndoe', email: 'john@example.com' });
-
-      expect(res.status).toBe(409);
-      expect(res.body).toEqual({
-        error: 'A user with this email or username already exists',
-      });
-    });
-
-    it('returns 500 on generic create error', async () => {
-      mockedUser.create.mockRejectedValue(new Error('DB error'));
-
-      const res = await request(app)
-        .post('/users')
-        .send({ username: 'johndoe', email: 'john@example.com' });
-
-      expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: 'Failed to create user' });
-    });
+    expect(res.status).toBe(401);
   });
 
   describe('GET /users', () => {
-    it('returns users and 200 with default limit', async () => {
-      const users = [
-        { uuid: 'u1', username: 'a', email: 'a@example.com' },
-        { uuid: 'u2', username: 'b', email: 'b@example.com' },
-      ];
-      mockedUser.find.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue(users),
-      } as never);
+    it('lists users for an admin', async () => {
+      const admin = await createUser({ role: 'admin' });
+      await createUser();
 
-      const res = await request(app).get('/users');
+      const res = await request(app)
+        .get('/users')
+        .set('Authorization', tokenFor(admin));
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(users);
-      expect(mockedUser.find).toHaveBeenCalledWith();
-      expect(mockedUser.find().limit(50)).toBeDefined();
+      expect(res.body).toHaveLength(2);
+      expect(JSON.stringify(res.body)).not.toContain('$2b$');
     });
 
-    it('respects limit and offset query', async () => {
-      mockedUser.find.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue([]),
-      } as never);
+    it('returns 403 for a non-admin', async () => {
+      const user = await createUser();
 
-      await request(app).get('/users').query({ limit: 10, offset: 5 });
+      const res = await request(app)
+        .get('/users')
+        .set('Authorization', tokenFor(user));
 
-      const chain = mockedUser.find();
-      expect(chain.skip).toHaveBeenCalledWith(5);
-      expect(chain.limit).toHaveBeenCalledWith(10);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ error: 'Insufficient permissions' });
     });
 
-    it('returns 500 on list error', async () => {
-      mockedUser.find.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockRejectedValue(new Error('DB error')),
-      } as never);
+    it('respects limit and offset for an admin', async () => {
+      const admin = await createUser({ role: 'admin' });
+      await createUser();
+      await createUser();
 
-      const res = await request(app).get('/users');
+      const res = await request(app)
+        .get('/users')
+        .query({ limit: 2, offset: 1 })
+        .set('Authorization', tokenFor(admin));
 
-      expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: 'Failed to list users' });
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
     });
   });
 
   describe('GET /users/:id', () => {
-    it('returns user by ObjectId and 200', async () => {
-      mockedUser.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
+    it('returns the caller\u2019s own account', async () => {
+      const user = await createUser({ username: 'self' });
 
-      const res = await request(app).get(`/users/${mockUserId.toString()}`);
+      const res = await request(app)
+        .get(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user));
 
       expect(res.status).toBe(200);
-      expect(res.body.uuid).toBe('user-uuid-123');
-      expect(res.body.username).toBe('johndoe');
-      expect(mockedUser.findOne).toHaveBeenCalledWith({ _id: mockUserId });
+      expect(res.body.username).toBe('self');
+      expect(res.body.password).toBeUndefined();
     });
 
-    it('finds user by uuid when id is not 24-char ObjectId', async () => {
-      mockedUser.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
+    it('returns 403 for another user\u2019s account', async () => {
+      const user = await createUser();
+      const other = await createUser();
 
-      await request(app).get('/users/user-uuid-123');
+      const res = await request(app)
+        .get(`/users/${other.uuid}`)
+        .set('Authorization', tokenFor(user));
 
-      expect(mockedUser.findOne).toHaveBeenCalledWith({
-        uuid: 'user-uuid-123',
-      });
+      expect(res.status).toBe(403);
     });
 
-    it('returns 404 when user is not found', async () => {
-      mockedUser.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue(null),
-      } as never);
+    it('lets an admin read any account', async () => {
+      const admin = await createUser({ role: 'admin' });
+      const other = await createUser({ username: 'target' });
 
-      const res = await request(app).get(`/users/${mockUserId.toString()}`);
+      const res = await request(app)
+        .get(`/users/${other.uuid}`)
+        .set('Authorization', tokenFor(admin));
+
+      expect(res.status).toBe(200);
+      expect(res.body.username).toBe('target');
+    });
+
+    it('returns 404 for an unknown user', async () => {
+      const admin = await createUser({ role: 'admin' });
+
+      const res = await request(app)
+        .get('/users/does-not-exist')
+        .set('Authorization', tokenFor(admin));
 
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: 'User not found' });
-    });
-
-    it('returns 500 on get error', async () => {
-      mockedUser.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockRejectedValue(new Error('DB error')),
-      } as never);
-
-      const res = await request(app).get(`/users/${mockUserId.toString()}`);
-
-      expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: 'Failed to get user' });
     });
   });
 
   describe('PUT /users/:id', () => {
-    it('updates user and returns 200', async () => {
-      const updated = {
-        ...mockUserDoc,
-        username: 'newname',
-        email: 'new@example.com',
-      };
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          ...mockUserDoc,
-          save: jest.fn().mockResolvedValue(updated),
-        }),
-      } as never);
+    it('updates the caller\u2019s own username and email', async () => {
+      const user = await createUser();
 
       const res = await request(app)
-        .put(`/users/${mockUserId.toString()}`)
-        .send({ username: 'newname', email: 'new@example.com' });
+        .put(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user))
+        .send({ username: 'renamed', email: 'RENAMED@Example.com' });
 
       expect(res.status).toBe(200);
-      expect(res.body.username).toBe('newname');
-      expect(res.body.email).toBe('new@example.com');
+      expect(res.body.username).toBe('renamed');
+      expect(res.body.email).toBe('renamed@example.com');
     });
 
-    it('returns 404 when user is not found', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      } as never);
+    it('rejects a role change', async () => {
+      const user = await createUser();
 
       const res = await request(app)
-        .put(`/users/${mockUserId.toString()}`)
-        .send({ username: 'x' });
+        .put(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user))
+        .send({ role: 'admin' });
 
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: 'User not found' });
+      expect(res.status).toBe(400);
+
+      const unchanged = await User.findById(user._id).lean();
+      expect(unchanged?.role).toBe('organizer');
     });
 
-    it('returns 400 when username is empty', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
+    it('rejects a direct password write', async () => {
+      const user = await createUser();
 
       const res = await request(app)
-        .put(`/users/${mockUserId.toString()}`)
+        .put(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user))
+        .send({ password: 'newpassword123' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 when updating another user', async () => {
+      const user = await createUser();
+      const other = await createUser();
+
+      const res = await request(app)
+        .put(`/users/${other.uuid}`)
+        .set('Authorization', tokenFor(user))
+        .send({ username: 'hijacked' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 400 for an empty username', async () => {
+      const user = await createUser();
+
+      const res = await request(app)
+        .put(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user))
         .send({ username: '   ' });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({
-        error: 'Username must be a non-empty string',
-      });
     });
 
-    it('returns 400 when email is empty', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
+    it('returns 409 when the email is already taken', async () => {
+      const user = await createUser();
+      const other = await createUser({ email: 'taken@example.com' });
 
       const res = await request(app)
-        .put(`/users/${mockUserId.toString()}`)
-        .send({ email: '   ' });
-
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: 'Email must be a non-empty string' });
-    });
-
-    it('returns 409 on duplicate key', async () => {
-      const docWithSave = {
-        ...mockUserDoc,
-        save: jest
-          .fn()
-          .mockRejectedValue(
-            Object.assign(new Error('E11000'), { code: 11000 })
-          ),
-      };
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(docWithSave),
-      } as never);
-
-      const res = await request(app)
-        .put(`/users/${mockUserId.toString()}`)
-        .send({ email: 'taken@example.com' });
+        .put(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user))
+        .send({ email: other.email });
 
       expect(res.status).toBe(409);
-      expect(res.body.error).toContain('already exists');
     });
 
-    it('returns 500 on update error', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          ...mockUserDoc,
-          save: jest.fn().mockRejectedValue(new Error('DB error')),
-        }),
-      } as never);
+    it('returns 409 when the username is already taken', async () => {
+      const user = await createUser();
+      const other = await createUser({ username: 'taken' });
 
       const res = await request(app)
-        .put(`/users/${mockUserId.toString()}`)
-        .send({ username: 'x' });
+        .put(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user))
+        .send({ username: other.username });
 
-      expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: 'Failed to update user' });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('That username is already taken');
     });
   });
 
   describe('DELETE /users/:id', () => {
-    it('deletes user and returns 204', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
-      mockedTeam.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(0),
-      } as never);
-      mockedUser.deleteOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({ deletedCount: 1 }),
-      } as never);
+    it('deletes the caller\u2019s own account when they own no teams', async () => {
+      const user = await createUser();
 
-      const res = await request(app).delete(`/users/${mockUserId.toString()}`);
+      const res = await request(app)
+        .delete(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user));
 
       expect(res.status).toBe(204);
-      expect(mockedTeam.countDocuments).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-      });
-      expect(mockedUser.deleteOne).toHaveBeenCalledWith({ _id: mockUserId });
+      expect(await User.findById(user._id).lean()).toBeNull();
     });
 
-    it('returns 404 when user is not found', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      } as never);
+    it('returns 409 when the user still owns teams', async () => {
+      const user = await createUser();
+      await createTeam(user._id);
 
-      const res = await request(app).delete(`/users/${mockUserId.toString()}`);
-
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: 'User not found' });
-      expect(mockedTeam.countDocuments).not.toHaveBeenCalled();
-    });
-
-    it('returns 409 when user owns teams', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
-      mockedTeam.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(2),
-      } as never);
-
-      const res = await request(app).delete(`/users/${mockUserId.toString()}`);
+      const res = await request(app)
+        .delete(`/users/${user.uuid}`)
+        .set('Authorization', tokenFor(user));
 
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ error: 'Cannot delete user that owns teams' });
-      expect(mockedUser.deleteOne).not.toHaveBeenCalled();
+      expect(res.body).toEqual({
+        error: 'Cannot delete user that owns teams',
+      });
     });
 
-    it('returns 500 on delete error', async () => {
-      mockedUser.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUserDoc),
-      } as never);
-      mockedTeam.countDocuments.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(0),
-      } as never);
-      mockedUser.deleteOne.mockReturnValue({
-        exec: jest.fn().mockRejectedValue(new Error('DB error')),
-      } as never);
+    it('returns 403 when deleting another user', async () => {
+      const user = await createUser();
+      const other = await createUser();
 
-      const res = await request(app).delete(`/users/${mockUserId.toString()}`);
+      const res = await request(app)
+        .delete(`/users/${other.uuid}`)
+        .set('Authorization', tokenFor(user));
 
-      expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: 'Failed to delete user' });
+      expect(res.status).toBe(403);
+      expect(await User.findById(other._id).lean()).not.toBeNull();
     });
   });
 });

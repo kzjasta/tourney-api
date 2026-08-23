@@ -1,4 +1,3 @@
-import { Response } from 'express';
 import mongoose from 'mongoose';
 import { PLAYER_POSITIONS, type PlayerPosition } from '../models/Player';
 import Team from '../models/Team';
@@ -72,22 +71,6 @@ export const parsePlayerBody = (body: Record<string, unknown>) => {
   };
 };
 
-export const handleError = (
-  res: Response,
-  err: unknown,
-  defaultMessage: string
-) => {
-  console.error(err);
-  if (
-    err instanceof Error &&
-    err.message === 'Jersey number already in use on this team'
-  ) {
-    res.status(409).json({ error: err.message });
-    return;
-  }
-  res.status(500).json({ error: defaultMessage });
-};
-
 export const parseQueryParams = (query: Record<string, unknown>) => {
   const limit = Math.min(
     Math.max(
@@ -122,19 +105,6 @@ export const syncTeamPlayers = async (
       { $addToSet: { players: playerId } }
     ).exec();
   }
-};
-
-export const handleGenericError = (
-  res: Response,
-  err: unknown,
-  defaultMessage: string
-) => {
-  console.error(err);
-  if (err && typeof err === 'object' && 'code' in err && err.code === 11000) {
-    res.status(409).json({ error: 'Duplicate entry' });
-    return;
-  }
-  res.status(500).json({ error: defaultMessage });
 };
 
 export const resolveUserId = async (

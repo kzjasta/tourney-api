@@ -1,104 +1,105 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import Team from '../models/Team';
 import Player from '../models/Player';
 import { idQuery } from '../lib/idQuery';
-import {
-  handleGenericError,
-  resolveUserId,
-  populateTeam,
-} from '../utils/utils';
+import { HttpError } from '../lib/httpError';
+import { resolveUserId, populateTeam } from '../utils/utils';
+import { currentUser, isAdmin } from '../middleware/auth';
 
 const router = Router();
 
 /**
- * POST /teams - Create a team (requires createdBy user id until auth is added)
- * Body: { name: string, coach?: string, createdBy: string } (createdBy = User uuid or _id)
+ * POST /teams - Create a team owned by the authenticated user
+ * Body: { name: string, coach?: string }
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, coach, createdBy } = req.body;
+    const auth = currentUser(req);
+    const { name, coach } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
-      return res.status(400).json({ error: 'Team name is required' });
-    }
-
-    if (!createdBy) {
-      return res.status(400).json({ error: 'createdBy (user id) is required' });
-    }
-
-    const userId = await resolveUserId(createdBy);
-    if (!userId) {
-      return res.status(404).json({ error: 'User not found' });
+      throw new HttpError(400, 'Team name is required');
     }
 
     const team = await Team.create({
       name: name.trim(),
       coach: coach ? String(coach).trim() : undefined,
-      createdBy: userId,
+      createdBy: auth.id,
       players: [],
     });
 
     const populated = await populateTeam(Team.findById(team._id));
     res.status(201).json(populated);
   } catch (err) {
-    handleGenericError(res, err, 'Failed to create team');
+    next(err);
   }
 });
 
 /**
- * GET /teams?userId=... - List teams for a user
+ * GET /teams - List the caller's teams (admins may pass ?userId=)
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const auth = currentUser(req);
     const { userId } = req.query;
 
-    if (!userId) {
-      return res.status(400).json({ error: 'userId query is required' });
+    let ownerId = auth.id;
+    if (userId) {
+      if (!isAdmin(auth)) {
+        throw new HttpError(403, "Only admins may list another user's teams");
+      }
+      const resolved = await resolveUserId(String(userId));
+      if (!resolved) {
+        throw new HttpError(404, 'User not found');
+      }
+      ownerId = resolved;
     }
 
-    const userObjectId = await resolveUserId(String(userId));
-    if (!userObjectId) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const teams = await populateTeam(Team.find({ createdBy: userObjectId }));
+    const teams = await populateTeam(Team.find({ createdBy: ownerId }));
     res.json(teams);
   } catch (err) {
-    handleGenericError(res, err, 'Failed to list teams');
+    next(err);
   }
 });
 
 /**
- * GET /teams/:id - Get one team by id (uuid or ObjectId)
+ * GET /teams/:id - Get one owned team by id (uuid or ObjectId)
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const team = await populateTeam(Team.findOne(idQuery(req.params.id)));
+    const auth = currentUser(req);
+    const filter = isAdmin(auth)
+      ? idQuery(req.params.id)
+      : { ...idQuery(req.params.id), createdBy: auth.id };
+
+    const team = await populateTeam(Team.findOne(filter));
     if (!team) {
-      return res.status(404).json({ error: 'Team not found' });
+      throw new HttpError(404, 'Team not found');
     }
     res.json(team);
   } catch (err) {
-    handleGenericError(res, err, 'Failed to get team');
+    next(err);
   }
 });
 
 /**
- * PUT /teams/:id - Update team (partial: name?, coach?)
+ * PUT /teams/:id - Update an owned team (partial: name?, coach?)
  */
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const auth = currentUser(req);
     const team = await Team.findOne(idQuery(req.params.id)).exec();
     if (!team) {
-      return res.status(404).json({ error: 'Team not found' });
+      throw new HttpError(404, 'Team not found');
+    }
+    if (!isAdmin(auth) && !team.createdBy.equals(auth.id)) {
+      throw new HttpError(403, 'You do not own this team');
     }
 
     const { name, coach } = req.body;
     if (name !== undefined) {
       if (typeof name !== 'string' || !name.trim()) {
-        return res
-          .status(400)
-          .json({ error: 'Team name must be a non-empty string' });
+        throw new HttpError(400, 'Team name must be a non-empty string');
       }
       team.name = name.trim();
     }
@@ -110,26 +111,36 @@ router.put('/:id', async (req: Request, res: Response) => {
     const populated = await populateTeam(Team.findById(team._id));
     res.json(populated);
   } catch (err) {
-    handleGenericError(res, err, 'Failed to update team');
+    next(err);
   }
 });
 
 /**
- * DELETE /teams/:id - Delete team and unset team on all players that referenced it
+ * DELETE /teams/:id - Delete an owned team and unset team on its players
  */
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    const team = await Team.findOne(idQuery(req.params.id)).exec();
-    if (!team) {
-      return res.status(404).json({ error: 'Team not found' });
-    }
+router.delete(
+  '/:id',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const team = await Team.findOne(idQuery(req.params.id)).exec();
+      if (!team) {
+        throw new HttpError(404, 'Team not found');
+      }
+      if (!isAdmin(auth) && !team.createdBy.equals(auth.id)) {
+        throw new HttpError(403, 'You do not own this team');
+      }
 
-    await Player.updateMany({ team: team._id }, { $unset: { team: 1 } }).exec();
-    await Team.deleteOne({ _id: team._id }).exec();
-    res.status(204).send();
-  } catch (err) {
-    handleGenericError(res, err, 'Failed to delete team');
+      await Player.updateMany(
+        { team: team._id },
+        { $unset: { team: 1 } }
+      ).exec();
+      await Team.deleteOne({ _id: team._id }).exec();
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 export default router;

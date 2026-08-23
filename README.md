@@ -33,3 +33,23 @@ npm run dev
 ```
 
 You should see: **Tourney API on Port 3000** (or your configured `PORT`).
+
+## Authentication
+
+Every route except `/health` and `/auth/*` requires a bearer token.
+
+| Route                 | Purpose                                          |
+| --------------------- | ------------------------------------------------ |
+| `POST /auth/register` | Create an account, returns an access token       |
+| `POST /auth/login`    | Exchange email + password for an access token    |
+| `POST /auth/refresh`  | Issue a new access token from the refresh cookie |
+| `POST /auth/logout`   | Revoke every refresh token for the user          |
+| `GET /auth/me`        | Current user                                     |
+
+Access tokens are short-lived (15m) and sent as `Authorization: Bearer <token>`.
+The refresh token is a 30-day httpOnly cookie scoped to `/auth`; browser clients
+must send requests with credentials enabled.
+
+Roles are `admin`, `organizer` (default), `coach` and `player`. Teams and players
+are owned by the user who created them — a non-admin can only read or modify
+their own records.

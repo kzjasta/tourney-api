@@ -20,6 +20,7 @@ export interface IPlayer extends Document {
   jerseyNumber?: number;
   height?: string;
   team?: mongoose.Types.ObjectId;
+  createdBy: mongoose.Types.ObjectId;
 }
 
 const playerSchema = new Schema<IPlayer>(
@@ -60,20 +61,27 @@ const playerSchema = new Schema<IPlayer>(
       ref: 'Team',
       default: null,
     },
+    // Owner of record, so players outlive the deletion of their team.
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Players on the same team cannot have the same jersey number (only when both are set)
+// Players on the same team cannot share a jersey number. $type (not $ne) is used
+// because partial indexes reject $ne; it also excludes null/missing values.
 playerSchema.index(
   { team: 1, jerseyNumber: 1 },
   {
     unique: true,
     partialFilterExpression: {
-      team: { $exists: true, $ne: null },
-      jerseyNumber: { $exists: true, $ne: null },
+      team: { $type: 'objectId' },
+      jerseyNumber: { $type: 'number' },
     },
   }
 );

@@ -4,9 +4,23 @@ import User from '../models/User';
 import Team from '../models/Team';
 import Player, { PLAYER_POSITIONS } from '../models/Player';
 
+const DEV_SEED_PASSWORD = 'changeme123';
+
+const seedPassword = () => {
+  if (process.env.SEED_PASSWORD) return process.env.SEED_PASSWORD;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SEED_PASSWORD must be set when seeding in production');
+  }
+  console.warn(
+    `[seed] SEED_PASSWORD not set - using the development default "${DEV_SEED_PASSWORD}".`
+  );
+  return DEV_SEED_PASSWORD;
+};
+
 const EXAMPLE_USER = {
   username: 'example',
   email: 'example@tourney.local',
+  role: 'organizer' as const,
 };
 
 const TEAM_DATA = [
@@ -95,10 +109,15 @@ const seed = async () => {
     // Clean up existing data
     await Player.deleteMany({});
     await Team.deleteMany({});
-    await User.deleteMany({ email: EXAMPLE_USER.email });
+    await User.deleteMany({
+      $or: [{ email: EXAMPLE_USER.email }, { username: EXAMPLE_USER.username }],
+    });
 
     // Create user
-    const user = await User.create(EXAMPLE_USER);
+    const user = await User.create({
+      ...EXAMPLE_USER,
+      password: seedPassword(),
+    });
     console.log('Example user created:', {
       uuid: user.uuid,
       username: user.username,
@@ -130,6 +149,7 @@ const seed = async () => {
         const player = await Player.create({
           ...playerData,
           team: team._id,
+          createdBy: user._id,
         });
 
         teamPlayers.push(player._id);
