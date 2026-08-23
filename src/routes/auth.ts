@@ -8,6 +8,13 @@ import {
   verifyRefreshToken,
 } from '../lib/tokens';
 import User from '../models/User';
+import {
+  loginSchema,
+  registerSchema,
+  type LoginInput,
+  type RegisterInput,
+} from '../schemas/auth';
+import { validateBody } from '../middleware/validate';
 import { currentUser, requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -52,25 +59,12 @@ const setRefreshCookie = (res: Response, token: string) => {
 router.post(
   '/register',
   credentialsLimiter,
+  validateBody(registerSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { username, email, password } = req.body;
+      const { username, email, password } = req.body as RegisterInput;
 
-      if (!username || typeof username !== 'string' || !username.trim()) {
-        throw new HttpError(400, 'Username is required');
-      }
-      if (!email || typeof email !== 'string' || !email.trim()) {
-        throw new HttpError(400, 'Email is required');
-      }
-      if (typeof password !== 'string' || password.length < 8) {
-        throw new HttpError(400, 'Password must be at least 8 characters');
-      }
-
-      const user = await User.create({
-        username: username.trim(),
-        email: email.trim().toLowerCase(),
-        password,
-      });
+      const user = await User.create({ username, email, password });
 
       setRefreshCookie(res, signRefreshToken(user));
       res.status(201).json({
@@ -90,17 +84,12 @@ router.post(
 router.post(
   '/login',
   credentialsLimiter,
+  validateBody(loginSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password } = req.body;
+      const { email, password } = req.body as LoginInput;
 
-      if (typeof email !== 'string' || typeof password !== 'string') {
-        throw new HttpError(400, 'Email and password are required');
-      }
-
-      const user = await User.findOne({ email: email.trim().toLowerCase() })
-        .select('+password')
-        .exec();
+      const user = await User.findOne({ email }).select('+password').exec();
 
       // Same response for unknown email and wrong password: no user enumeration.
       if (!user || !(await user.comparePassword(password))) {

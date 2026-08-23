@@ -5,6 +5,13 @@ import User from '../models/User';
 import { idQuery } from '../lib/idQuery';
 import { HttpError } from '../lib/httpError';
 import { resolveId } from '../lib/resolveId';
+import {
+  createTeamSchema,
+  updateTeamSchema,
+  type CreateTeamInput,
+  type UpdateTeamInput,
+} from '../schemas/team';
+import { validateBody } from '../middleware/validate';
 import { populateTeam } from '../serializers/team';
 import { currentUser, isAdmin } from '../middleware/auth';
 
@@ -14,28 +21,28 @@ const router = Router();
  * POST /teams - Create a team owned by the authenticated user
  * Body: { name: string, coach?: string }
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const auth = currentUser(req);
-    const { name, coach } = req.body;
+router.post(
+  '/',
+  validateBody(createTeamSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const { name, coach } = req.body as CreateTeamInput;
 
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      throw new HttpError(400, 'Team name is required');
+      const team = await Team.create({
+        name,
+        coach: coach || undefined,
+        createdBy: auth.id,
+        players: [],
+      });
+
+      const populated = await populateTeam(Team.findById(team._id));
+      res.status(201).json(populated);
+    } catch (err) {
+      next(err);
     }
-
-    const team = await Team.create({
-      name: name.trim(),
-      coach: coach ? String(coach).trim() : undefined,
-      createdBy: auth.id,
-      players: [],
-    });
-
-    const populated = await populateTeam(Team.findById(team._id));
-    res.status(201).json(populated);
-  } catch (err) {
-    next(err);
   }
-});
+);
 
 /**
  * GET /teams - List the caller's teams (admins may pass ?userId=)
@@ -87,35 +94,36 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 /**
  * PUT /teams/:id - Update an owned team (partial: name?, coach?)
  */
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const auth = currentUser(req);
-    const team = await Team.findOne(idQuery(req.params.id)).exec();
-    if (!team) {
-      throw new HttpError(404, 'Team not found');
-    }
-    if (!isAdmin(auth) && !team.createdBy.equals(auth.id)) {
-      throw new HttpError(403, 'You do not own this team');
-    }
-
-    const { name, coach } = req.body;
-    if (name !== undefined) {
-      if (typeof name !== 'string' || !name.trim()) {
-        throw new HttpError(400, 'Team name must be a non-empty string');
+router.put(
+  '/:id',
+  validateBody(updateTeamSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const team = await Team.findOne(idQuery(req.params.id)).exec();
+      if (!team) {
+        throw new HttpError(404, 'Team not found');
       }
-      team.name = name.trim();
-    }
-    if (coach !== undefined) {
-      team.coach = coach ? String(coach).trim() : undefined;
-    }
+      if (!isAdmin(auth) && !team.createdBy.equals(auth.id)) {
+        throw new HttpError(403, 'You do not own this team');
+      }
 
-    await team.save();
-    const populated = await populateTeam(Team.findById(team._id));
-    res.json(populated);
-  } catch (err) {
-    next(err);
+      const { name, coach } = req.body as UpdateTeamInput;
+      if (name !== undefined) {
+        team.name = name;
+      }
+      if (coach !== undefined) {
+        team.coach = coach || undefined;
+      }
+
+      await team.save();
+      const populated = await populateTeam(Team.findById(team._id));
+      res.json(populated);
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 /**
  * DELETE /teams/:id - Delete an owned team and unset team on its players

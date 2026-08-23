@@ -4,6 +4,8 @@ import Team from '../models/Team';
 import { idQuery } from '../lib/idQuery';
 import { HttpError } from '../lib/httpError';
 import { parsePagination } from '../lib/pagination';
+import { updateUserSchema, type UpdateUserInput } from '../schemas/user';
+import { validateBody } from '../middleware/validate';
 import {
   assertSelfOrAdmin,
   currentUser,
@@ -67,46 +69,33 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 /**
  * PUT /users/:id - Update user (self or admin; partial: username?, email?)
  */
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const auth = currentUser(req);
-    const user = await User.findOne(idQuery(req.params.id)).exec();
-    if (!user) {
-      throw new HttpError(404, 'User not found');
-    }
-    assertSelfOrAdmin(user._id as never, auth);
-
-    const { username, email, role, password, tokenVersion } = req.body;
-    if (
-      role !== undefined ||
-      password !== undefined ||
-      tokenVersion !== undefined
-    ) {
-      throw new HttpError(
-        400,
-        'role, password and tokenVersion cannot be changed here'
-      );
-    }
-
-    if (username !== undefined) {
-      if (typeof username !== 'string' || !username.trim()) {
-        throw new HttpError(400, 'Username must be a non-empty string');
+router.put(
+  '/:id',
+  validateBody(updateUserSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const user = await User.findOne(idQuery(req.params.id)).exec();
+      if (!user) {
+        throw new HttpError(404, 'User not found');
       }
-      user.username = username.trim();
-    }
-    if (email !== undefined) {
-      if (typeof email !== 'string' || !email.trim()) {
-        throw new HttpError(400, 'Email must be a non-empty string');
-      }
-      user.email = email.trim().toLowerCase();
-    }
+      assertSelfOrAdmin(user._id as never, auth);
 
-    await user.save();
-    res.json(userResponse(user));
-  } catch (err: unknown) {
-    next(err);
+      const { username, email } = req.body as UpdateUserInput;
+      if (username !== undefined) {
+        user.username = username;
+      }
+      if (email !== undefined) {
+        user.email = email;
+      }
+
+      await user.save();
+      res.json(userResponse(user));
+    } catch (err: unknown) {
+      next(err);
+    }
   }
-});
+);
 
 /**
  * DELETE /users/:id - Delete user (self or admin; 409 if user owns teams)

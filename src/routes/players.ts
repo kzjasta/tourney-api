@@ -6,7 +6,13 @@ import { idQuery } from '../lib/idQuery';
 import { HttpError } from '../lib/httpError';
 import { resolveId } from '../lib/resolveId';
 import { parsePagination } from '../lib/pagination';
-import { parsePlayerBody } from '../schemas/player';
+import {
+  createPlayerSchema,
+  updatePlayerSchema,
+  type CreatePlayerInput,
+  type UpdatePlayerInput,
+} from '../schemas/player';
+import { validateBody } from '../middleware/validate';
 import { populatePlayer } from '../serializers/player';
 import {
   addPlayerToTeam,
@@ -37,41 +43,40 @@ const canAccessPlayer = async (
  * POST /players - Create a player
  * Body: { firstName, lastName (required); position?, dateOfBirth?, jerseyNumber?, height?, team? }
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const auth = currentUser(req);
-    const { firstName, lastName, ...rest } = parsePlayerBody(req.body);
-    if (!firstName || !lastName) {
-      throw new HttpError(400, 'First name and last name are required');
-    }
+router.post(
+  '/',
+  validateBody(createPlayerSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const { team: teamRef, ...fields } = req.body as CreatePlayerInput;
 
-    let teamObjectId: mongoose.Types.ObjectId | null = null;
-    if (rest.teamId) {
-      teamObjectId = await resolveId(Team, String(rest.teamId));
-      if (!teamObjectId) {
-        throw new HttpError(404, 'Team not found');
+      let teamObjectId: mongoose.Types.ObjectId | null = null;
+      if (teamRef) {
+        teamObjectId = await resolveId(Team, teamRef);
+        if (!teamObjectId) {
+          throw new HttpError(404, 'Team not found');
+        }
+        await assertTeamOwner(teamObjectId, auth);
       }
-      await assertTeamOwner(teamObjectId, auth);
+
+      const player = await Player.create({
+        ...fields,
+        team: teamObjectId ?? undefined,
+        createdBy: auth.id,
+      });
+
+      if (teamObjectId) {
+        await addPlayerToTeam(teamObjectId, player._id);
+      }
+
+      const populated = await populatePlayer(Player.findById(player._id));
+      res.status(201).json(populated);
+    } catch (err: unknown) {
+      next(err);
     }
-
-    const player = await Player.create({
-      firstName,
-      lastName,
-      ...rest,
-      team: teamObjectId ?? undefined,
-      createdBy: auth.id,
-    });
-
-    if (teamObjectId) {
-      await addPlayerToTeam(teamObjectId, player._id);
-    }
-
-    const populated = await populatePlayer(Player.findById(player._id));
-    res.status(201).json(populated);
-  } catch (err: unknown) {
-    next(err);
   }
-});
+);
 
 /**
  * GET /players - List players (optional ?teamId=, ?limit=, ?offset=)
@@ -131,54 +136,50 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 /**
  * PUT /players/:id - Update player (partial). Sync Team.players when team changes.
  */
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const auth = currentUser(req);
-    const player = await Player.findOne(idQuery(req.params.id)).exec();
-    if (!player || !(await canAccessPlayer(player, auth))) {
-      throw new HttpError(404, 'Player not found');
-    }
-
-    const parsed = parsePlayerBody(req.body);
-    const oldTeamId = player.team as mongoose.Types.ObjectId | null;
-
-    let newTeamId: mongoose.Types.ObjectId | null = null;
-    if (parsed.teamId !== undefined) {
-      if (parsed.teamId) {
-        newTeamId = await resolveId(Team, parsed.teamId);
-        if (!newTeamId) {
-          throw new HttpError(404, 'Team not found');
-        }
+router.put(
+  '/:id',
+  validateBody(updatePlayerSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth = currentUser(req);
+      const player = await Player.findOne(idQuery(req.params.id)).exec();
+      if (!player || !(await canAccessPlayer(player, auth))) {
+        throw new HttpError(404, 'Player not found');
       }
-      // A transfer touches two rosters, so both must belong to the caller.
-      if (oldTeamId) await assertTeamOwner(oldTeamId, auth);
-      if (newTeamId) await assertTeamOwner(newTeamId, auth);
+
+      const { team: teamRef, ...fields } = req.body as UpdatePlayerInput;
+      const oldTeamId = player.team as mongoose.Types.ObjectId | null;
+      const teamChanged = teamRef !== undefined;
+
+      let newTeamId: mongoose.Types.ObjectId | null = null;
+      if (teamChanged) {
+        if (teamRef) {
+          newTeamId = await resolveId(Team, teamRef);
+          if (!newTeamId) {
+            throw new HttpError(404, 'Team not found');
+          }
+        }
+        // A transfer touches two rosters, so both must belong to the caller.
+        if (oldTeamId) await assertTeamOwner(oldTeamId, auth);
+        if (newTeamId) await assertTeamOwner(newTeamId, auth);
+      }
+
+      Object.assign(player, fields, {
+        ...(teamChanged && { team: newTeamId ?? undefined }),
+      });
+
+      await player.save();
+      if (teamChanged) {
+        await syncTeamPlayers(player._id, oldTeamId, newTeamId);
+      }
+
+      const populated = await populatePlayer(Player.findById(player._id));
+      res.json(populated);
+    } catch (err: unknown) {
+      next(err);
     }
-
-    // Update player fields
-    Object.assign(player, {
-      ...(parsed.firstName !== undefined && { firstName: parsed.firstName }),
-      ...(parsed.lastName !== undefined && { lastName: parsed.lastName }),
-      ...(parsed.position !== undefined && { position: parsed.position }),
-      ...(parsed.dateOfBirth !== undefined && {
-        dateOfBirth: parsed.dateOfBirth,
-      }),
-      ...(parsed.jerseyNumber !== undefined && {
-        jerseyNumber: parsed.jerseyNumber,
-      }),
-      ...(parsed.height !== undefined && { height: parsed.height }),
-      ...(parsed.teamId !== undefined && { team: newTeamId ?? undefined }),
-    });
-
-    await player.save();
-    await syncTeamPlayers(player._id, oldTeamId, newTeamId);
-
-    const populated = await populatePlayer(Player.findById(player._id));
-    res.json(populated);
-  } catch (err: unknown) {
-    next(err);
   }
-});
+);
 
 /**
  * DELETE /players/:id - Remove from team's players (if any), then delete player.
