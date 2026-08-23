@@ -1,16 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import User from '../models/User';
-import Team from '../models/Team';
-import { idQuery } from '../lib/idQuery';
-import { HttpError } from '../lib/httpError';
 import { parsePagination } from '../lib/pagination';
 import { updateUserSchema, type UpdateUserInput } from '../schemas/user';
 import { validateBody } from '../middleware/validate';
+import { currentUser, requireRole } from '../middleware/auth';
 import {
-  assertSelfOrAdmin,
-  currentUser,
-  requireRole,
-} from '../middleware/auth';
+  deleteUser,
+  getUser,
+  listUsers,
+  updateUser,
+} from '../services/user.service';
 
 const router = Router();
 
@@ -34,12 +32,7 @@ router.get(
   requireRole('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset } = parsePagination(req.query);
-      const users = await User.find()
-        .select('uuid username email role')
-        .skip(offset)
-        .limit(limit)
-        .lean();
+      const users = await listUsers(parsePagination(req.query));
       res.json(users);
     } catch (err: unknown) {
       next(err);
@@ -52,14 +45,7 @@ router.get(
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const auth = currentUser(req);
-    const user = await User.findOne(idQuery(req.params.id))
-      .select('uuid username email role')
-      .lean();
-    if (!user) {
-      throw new HttpError(404, 'User not found');
-    }
-    assertSelfOrAdmin(user._id as never, auth);
+    const user = await getUser(currentUser(req), req.params.id);
     res.json(userResponse(user as never));
   } catch (err: unknown) {
     next(err);
@@ -74,22 +60,11 @@ router.put(
   validateBody(updateUserSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth = currentUser(req);
-      const user = await User.findOne(idQuery(req.params.id)).exec();
-      if (!user) {
-        throw new HttpError(404, 'User not found');
-      }
-      assertSelfOrAdmin(user._id as never, auth);
-
-      const { username, email } = req.body as UpdateUserInput;
-      if (username !== undefined) {
-        user.username = username;
-      }
-      if (email !== undefined) {
-        user.email = email;
-      }
-
-      await user.save();
+      const user = await updateUser(
+        currentUser(req),
+        req.params.id,
+        req.body as UpdateUserInput
+      );
       res.json(userResponse(user));
     } catch (err: unknown) {
       next(err);
@@ -104,21 +79,7 @@ router.delete(
   '/:id',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth = currentUser(req);
-      const user = await User.findOne(idQuery(req.params.id)).exec();
-      if (!user) {
-        throw new HttpError(404, 'User not found');
-      }
-      assertSelfOrAdmin(user._id as never, auth);
-
-      const teamCount = await Team.countDocuments({
-        createdBy: user._id,
-      }).exec();
-      if (teamCount > 0) {
-        throw new HttpError(409, 'Cannot delete user that owns teams');
-      }
-
-      await User.deleteOne({ _id: user._id }).exec();
+      await deleteUser(currentUser(req), req.params.id);
       res.status(204).send();
     } catch (err: unknown) {
       next(err);

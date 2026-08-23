@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { HttpError } from '../lib/httpError';
 import Team from '../models/Team';
-import { isAdmin } from './auth';
+import { isAdmin } from '../lib/authorization';
 import type { AuthUser } from '../types/express';
 
 /** Throws 403 unless the user owns the team (admins bypass). */

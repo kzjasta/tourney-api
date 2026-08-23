@@ -1,10 +1,4 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import Team from '../models/Team';
-import Player from '../models/Player';
-import User from '../models/User';
-import { idQuery } from '../lib/idQuery';
-import { HttpError } from '../lib/httpError';
-import { resolveId } from '../lib/resolveId';
 import {
   createTeamSchema,
   updateTeamSchema,
@@ -12,8 +6,14 @@ import {
   type UpdateTeamInput,
 } from '../schemas/team';
 import { validateBody } from '../middleware/validate';
-import { populateTeam } from '../serializers/team';
-import { currentUser, isAdmin } from '../middleware/auth';
+import { currentUser } from '../middleware/auth';
+import {
+  createTeam,
+  deleteTeam,
+  getTeam,
+  listTeams,
+  updateTeam,
+} from '../services/team.service';
 
 const router = Router();
 
@@ -26,18 +26,11 @@ router.post(
   validateBody(createTeamSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth = currentUser(req);
-      const { name, coach } = req.body as CreateTeamInput;
-
-      const team = await Team.create({
-        name,
-        coach: coach || undefined,
-        createdBy: auth.id,
-        players: [],
-      });
-
-      const populated = await populateTeam(Team.findById(team._id));
-      res.status(201).json(populated);
+      const team = await createTeam(
+        currentUser(req),
+        req.body as CreateTeamInput
+      );
+      res.status(201).json(team);
     } catch (err) {
       next(err);
     }
@@ -49,22 +42,11 @@ router.post(
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const auth = currentUser(req);
     const { userId } = req.query;
-
-    let ownerId = auth.id;
-    if (userId) {
-      if (!isAdmin(auth)) {
-        throw new HttpError(403, "Only admins may list another user's teams");
-      }
-      const resolved = await resolveId(User, String(userId));
-      if (!resolved) {
-        throw new HttpError(404, 'User not found');
-      }
-      ownerId = resolved;
-    }
-
-    const teams = await populateTeam(Team.find({ createdBy: ownerId }));
+    const teams = await listTeams(
+      currentUser(req),
+      userId ? String(userId) : undefined
+    );
     res.json(teams);
   } catch (err) {
     next(err);
@@ -76,15 +58,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const auth = currentUser(req);
-    const filter = isAdmin(auth)
-      ? idQuery(req.params.id)
-      : { ...idQuery(req.params.id), createdBy: auth.id };
-
-    const team = await populateTeam(Team.findOne(filter));
-    if (!team) {
-      throw new HttpError(404, 'Team not found');
-    }
+    const team = await getTeam(currentUser(req), req.params.id);
     res.json(team);
   } catch (err) {
     next(err);
@@ -99,26 +73,12 @@ router.put(
   validateBody(updateTeamSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth = currentUser(req);
-      const team = await Team.findOne(idQuery(req.params.id)).exec();
-      if (!team) {
-        throw new HttpError(404, 'Team not found');
-      }
-      if (!isAdmin(auth) && !team.createdBy.equals(auth.id)) {
-        throw new HttpError(403, 'You do not own this team');
-      }
-
-      const { name, coach } = req.body as UpdateTeamInput;
-      if (name !== undefined) {
-        team.name = name;
-      }
-      if (coach !== undefined) {
-        team.coach = coach || undefined;
-      }
-
-      await team.save();
-      const populated = await populateTeam(Team.findById(team._id));
-      res.json(populated);
+      const team = await updateTeam(
+        currentUser(req),
+        req.params.id,
+        req.body as UpdateTeamInput
+      );
+      res.json(team);
     } catch (err) {
       next(err);
     }
@@ -132,20 +92,7 @@ router.delete(
   '/:id',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const auth = currentUser(req);
-      const team = await Team.findOne(idQuery(req.params.id)).exec();
-      if (!team) {
-        throw new HttpError(404, 'Team not found');
-      }
-      if (!isAdmin(auth) && !team.createdBy.equals(auth.id)) {
-        throw new HttpError(403, 'You do not own this team');
-      }
-
-      await Player.updateMany(
-        { team: team._id },
-        { $unset: { team: 1 } }
-      ).exec();
-      await Team.deleteOne({ _id: team._id }).exec();
+      await deleteTeam(currentUser(req), req.params.id);
       res.status(204).send();
     } catch (err) {
       next(err);
