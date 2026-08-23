@@ -3,7 +3,7 @@ import User from '../models/User';
 import Team from '../models/Team';
 import { idQuery } from '../lib/idQuery';
 import { HttpError } from '../lib/httpError';
-import { parseQueryParams } from '../utils/utils';
+import { parsePagination } from '../lib/pagination';
 import {
   assertSelfOrAdmin,
   currentUser,
@@ -32,7 +32,7 @@ router.get(
   requireRole('admin'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset } = parseQueryParams(req.query);
+      const { limit, offset } = parsePagination(req.query);
       const users = await User.find()
         .select('uuid username email role')
         .skip(offset)

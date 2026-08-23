@@ -4,13 +4,15 @@ import Player, { IPlayer } from '../models/Player';
 import Team from '../models/Team';
 import { idQuery } from '../lib/idQuery';
 import { HttpError } from '../lib/httpError';
+import { resolveId } from '../lib/resolveId';
+import { parsePagination } from '../lib/pagination';
+import { parsePlayerBody } from '../schemas/player';
+import { populatePlayer } from '../serializers/player';
 import {
-  resolveTeamId,
-  parsePlayerBody,
-  parseQueryParams,
-  populatePlayer,
+  addPlayerToTeam,
+  removePlayerFromTeam,
   syncTeamPlayers,
-} from '../utils/utils';
+} from '../services/team.service';
 import { currentUser, isAdmin } from '../middleware/auth';
 import { assertTeamOwner, ownedTeamIds } from '../middleware/ownership';
 import type { AuthUser } from '../types/express';
@@ -45,7 +47,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     let teamObjectId: mongoose.Types.ObjectId | null = null;
     if (rest.teamId) {
-      teamObjectId = await resolveTeamId(String(rest.teamId));
+      teamObjectId = await resolveId(Team, String(rest.teamId));
       if (!teamObjectId) {
         throw new HttpError(404, 'Team not found');
       }
@@ -61,10 +63,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     });
 
     if (teamObjectId) {
-      await Team.updateOne(
-        { _id: teamObjectId },
-        { $addToSet: { players: player._id } }
-      ).exec();
+      await addPlayerToTeam(teamObjectId, player._id);
     }
 
     const populated = await populatePlayer(Player.findById(player._id));
@@ -82,11 +81,11 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = currentUser(req);
     const { teamId } = req.query;
-    const { limit, offset } = parseQueryParams(req.query);
+    const { limit, offset } = parsePagination(req.query);
     let filter: mongoose.FilterQuery<unknown> = {};
 
     if (teamId && teamId !== '') {
-      const tid = await resolveTeamId(String(teamId));
+      const tid = await resolveId(Team, String(teamId));
       if (!tid) {
         throw new HttpError(404, 'Team not found');
       }
@@ -146,7 +145,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     let newTeamId: mongoose.Types.ObjectId | null = null;
     if (parsed.teamId !== undefined) {
       if (parsed.teamId) {
-        newTeamId = await resolveTeamId(parsed.teamId);
+        newTeamId = await resolveId(Team, parsed.teamId);
         if (!newTeamId) {
           throw new HttpError(404, 'Team not found');
         }
@@ -195,10 +194,7 @@ router.delete(
       }
 
       if (player.team) {
-        await Team.updateOne(
-          { _id: player.team },
-          { $pull: { players: player._id } }
-        ).exec();
+        await removePlayerFromTeam(player.team, player._id);
       }
 
       await Player.deleteOne({ _id: player._id }).exec();

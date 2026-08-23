@@ -1,9 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import Team from '../models/Team';
 import Player from '../models/Player';
+import User from '../models/User';
 import { idQuery } from '../lib/idQuery';
 import { HttpError } from '../lib/httpError';
-import { resolveUserId, populateTeam } from '../utils/utils';
+import { resolveId } from '../lib/resolveId';
+import { populateTeam } from '../serializers/team';
 import { currentUser, isAdmin } from '../middleware/auth';
 
 const router = Router();
@@ -48,7 +50,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       if (!isAdmin(auth)) {
         throw new HttpError(403, "Only admins may list another user's teams");
       }
-      const resolved = await resolveUserId(String(userId));
+      const resolved = await resolveId(User, String(userId));
       if (!resolved) {
         throw new HttpError(404, 'User not found');
       }
