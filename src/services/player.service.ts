@@ -4,7 +4,7 @@ import { idQuery } from '../lib/idQuery';
 import { resolveId } from '../lib/resolveId';
 import Player, { IPlayer } from '../models/Player';
 import Team from '../models/Team';
-import { populatePlayer } from '../serializers/player';
+import { populatePlayer, populatePlayers } from '../serializers/player';
 import type { CreatePlayerInput, UpdatePlayerInput } from '../schemas/player';
 import { isAdmin } from '../lib/authorization';
 import { assertTeamOwner, ownedTeamIds } from './ownership';
@@ -84,7 +84,7 @@ export const listPlayers = async (
     };
   }
 
-  return populatePlayer(
+  return populatePlayers(
     Player.find(filter).skip(options.offset).limit(options.limit)
   );
 };

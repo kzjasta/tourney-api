@@ -4,6 +4,7 @@ import User, { UserRole } from '../../models/User';
 import Team from '../../models/Team';
 import Player from '../../models/Player';
 import { signAccessToken } from '../../lib/tokens';
+import type { AuthUser } from '../../types/auth';
 
 let memoryServer: MongoMemoryServer;
 
@@ -84,3 +85,9 @@ export const tokenFor = (user: {
     role: user.role,
     tokenVersion: user.tokenVersion ?? 0,
   })}`;
+
+/** AuthUser for a persisted user document, for calling services directly. */
+export const authFor = (user: { _id: unknown; role: UserRole }): AuthUser => ({
+  id: user._id as mongoose.Types.ObjectId,
+  role: user.role,
+});
