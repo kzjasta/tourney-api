@@ -4,7 +4,7 @@
   "description": "Tourney API with Express, Mongoose, and TypeScript",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "prestart": "npm run build",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
