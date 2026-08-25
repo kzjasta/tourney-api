@@ -2,7 +2,7 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import User from '../models/User';
 import Team from '../models/Team';
-import Player, { PLAYER_POSITIONS } from '../models/Player';
+import Player from '../models/Player';
 
 const DEV_SEED_PASSWORD = 'changeme123';
 

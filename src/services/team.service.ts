@@ -5,7 +5,7 @@ import { resolveId } from '../lib/resolveId';
 import Team from '../models/Team';
 import Player from '../models/Player';
 import User from '../models/User';
-import { populateTeam } from '../serializers/team';
+import { populateTeam, populateTeams } from '../serializers/team';
 import type { CreateTeamInput, UpdateTeamInput } from '../schemas/team';
 import { isAdmin } from '../lib/authorization';
 import type { AuthUser } from '../types/auth';
@@ -67,7 +67,7 @@ export const listTeams = async (auth: AuthUser, userRef?: string) => {
     ownerId = resolved;
   }
 
-  return populateTeam(Team.find({ createdBy: ownerId }));
+  return populateTeams(Team.find({ createdBy: ownerId }));
 };
 
 export const getTeam = async (auth: AuthUser, id: string) => {

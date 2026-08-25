@@ -17,13 +17,13 @@ export interface PlayerView {
 }
 
 export const populatePlayer = async (
-  query: mongoose.Query<any, any>
+  query: mongoose.Query<unknown, unknown>
 ): Promise<PlayerView | null> =>
   (await query
     .populate('team', TEAM_FIELDS)
     .lean()) as unknown as PlayerView | null;
 
 export const populatePlayers = async (
-  query: mongoose.Query<any, any>
+  query: mongoose.Query<unknown, unknown>
 ): Promise<PlayerView[]> =>
   (await query.populate('team', TEAM_FIELDS).lean()) as unknown as PlayerView[];
