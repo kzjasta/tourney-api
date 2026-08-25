@@ -115,4 +115,36 @@ describe('Player model - jersey number uniqueness per team', () => {
     expect(player1.team?.toString()).toBe(teamA._id.toString());
     expect(player2.team?.toString()).toBe(teamB._id.toString());
   });
+
+  it('rejects exactly one of two concurrent inserts of the same number', async () => {
+    const user = await createUser();
+    const team = await createTeam(user._id);
+
+    const results = await Promise.allSettled([
+      Player.create({
+        firstName: 'Alice',
+        lastName: 'Smith',
+        team: team._id,
+        jerseyNumber: 9,
+        createdBy: user._id,
+      }),
+      Player.create({
+        firstName: 'Bob',
+        lastName: 'Jones',
+        team: team._id,
+        jerseyNumber: 9,
+        createdBy: user._id,
+      }),
+    ]);
+
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(
+      r => r.status === 'rejected'
+    ) as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({
+      status: 409,
+      message: 'Jersey number already in use on this team',
+    });
+    expect(await Player.countDocuments({ team: team._id })).toBe(1);
+  });
 });

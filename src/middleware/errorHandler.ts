@@ -41,12 +41,5 @@ export const errorHandler = (
     return res.status(400).json({ error: err.message });
   }
 
-  if (
-    err instanceof Error &&
-    err.message === 'Jersey number already in use on this team'
-  ) {
-    return res.status(409).json({ error: err.message });
-  }
-
   res.status(500).json({ error: 'Internal server error' });
 };

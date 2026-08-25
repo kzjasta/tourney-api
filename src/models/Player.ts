@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import { randomUUID } from 'crypto';
+import { HttpError } from '../lib/httpError';
 
 export const PLAYER_POSITIONS = [
   'Setter',
@@ -86,20 +87,25 @@ playerSchema.index(
   }
 );
 
-playerSchema.pre('save', async function (next) {
-  if (this.team == null || this.jerseyNumber == null) return next();
-  const Model = this.constructor as mongoose.Model<IPlayer>;
-  const existing = await Model.findOne({
-    team: this.team,
-    jerseyNumber: this.jerseyNumber,
-    _id: { $ne: this._id },
-  });
-  if (existing) {
-    next(new Error('Jersey number already in use on this team'));
-    return;
+const isDuplicateJersey = (err: unknown): boolean => {
+  if (!err || typeof err !== 'object') return false;
+  if ((err as { code?: number }).code !== 11000) return false;
+  const pattern = (err as { keyPattern?: Record<string, unknown> }).keyPattern;
+  return !!pattern && 'team' in pattern && 'jerseyNumber' in pattern;
+};
+
+// The unique index above is the only guard; this maps its driver error to a 409.
+playerSchema.post(
+  'save',
+  function (err: Error, _doc: IPlayer, next: (err?: Error) => void) {
+    if (isDuplicateJersey(err)) {
+      return next(
+        new HttpError(409, 'Jersey number already in use on this team')
+      );
+    }
+    next(err);
   }
-  next();
-});
+);
 
 const Player: Model<IPlayer> =
   mongoose.models.Player ?? mongoose.model<IPlayer>('Player', playerSchema);
