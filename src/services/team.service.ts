@@ -4,7 +4,11 @@ import { resolveId } from '../lib/resolveId';
 import Team from '../models/Team';
 import Player from '../models/Player';
 import User from '../models/User';
-import { populateTeam, populateTeams } from '../serializers/team';
+import {
+  populateTeam,
+  populateTeams,
+  serializeTeam,
+} from '../serializers/team';
 import type { CreateTeamInput, UpdateTeamInput } from '../schemas/team';
 import { isAdmin } from '../lib/authorization';
 import type { AuthUser } from '../types/auth';
@@ -27,7 +31,7 @@ export const createTeam = async (auth: AuthUser, input: CreateTeamInput) => {
     createdBy: auth.id,
   });
 
-  return populateTeam(Team.findById(team._id));
+  return serializeTeam(team);
 };
 
 export const listTeams = async (auth: AuthUser, userRef?: string) => {
@@ -74,7 +78,7 @@ export const updateTeam = async (
   }
 
   await team.save();
-  return populateTeam(Team.findById(team._id));
+  return serializeTeam(team);
 };
 
 export const deleteTeam = async (auth: AuthUser, id: string) => {

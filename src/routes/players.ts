@@ -26,11 +26,8 @@ const router = Router();
 router.post(
   '/',
   validateBody(createPlayerSchema),
-  asyncHandler(async (req, res) => {
-    const player = await createPlayer(
-      currentUser(req),
-      req.body as CreatePlayerInput
-    );
+  asyncHandler<CreatePlayerInput>(async (req, res) => {
+    const player = await createPlayer(currentUser(req), req.body);
     res.status(201).json(player);
   })
 );
@@ -68,11 +65,11 @@ router.get(
 router.put(
   '/:id',
   validateBody(updatePlayerSchema),
-  asyncHandler(async (req, res) => {
+  asyncHandler<UpdatePlayerInput>(async (req, res) => {
     const player = await updatePlayer(
       currentUser(req),
       req.params.id,
-      req.body as UpdatePlayerInput
+      req.body
     );
     res.json(player);
   })

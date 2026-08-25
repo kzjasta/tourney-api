@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Player, { type PlayerPosition } from '../models/Player';
+import type { ITeam } from '../models/Team';
 
 const PLAYER_FIELDS =
   'uuid firstName lastName position dateOfBirth jerseyNumber height';
@@ -88,4 +89,13 @@ export const populateTeams = async (
     .populate('createdBy', OWNER_FIELDS)
     .lean()) as unknown as RawTeam[];
   return attachRosters(teams);
+};
+
+/** Populates a document already in hand, avoiding a refetch by id. */
+export const serializeTeam = async (doc: ITeam): Promise<TeamView> => {
+  const raw = (
+    await doc.populate('createdBy', OWNER_FIELDS)
+  ).toObject() as unknown as RawTeam;
+  const [view] = await attachRosters([raw]);
+  return view;
 };

@@ -43,12 +43,8 @@ router.get(
 router.put(
   '/:id',
   validateBody(updateUserSchema),
-  asyncHandler(async (req, res) => {
-    const user = await updateUser(
-      currentUser(req),
-      req.params.id,
-      req.body as UpdateUserInput
-    );
+  asyncHandler<UpdateUserInput>(async (req, res) => {
+    const user = await updateUser(currentUser(req), req.params.id, req.body);
     res.json(toPublicUser(user));
   })
 );

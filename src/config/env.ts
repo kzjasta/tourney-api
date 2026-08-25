@@ -53,6 +53,11 @@ export const config = Object.freeze({
   refreshTokenTtl: process.env.JWT_REFRESH_TTL ?? '30d',
   refreshTokenMaxAgeMs: 30 * 24 * 60 * 60 * 1000,
   bcryptRounds: 12,
+  rateLimitWindowMs: 15 * 60 * 1000,
+  rateLimitMax: 100,
+  credentialsRateLimitMax: 10,
+  defaultPageSize: 50,
+  maxPageSize: 100,
 });
 
 if (!isProduction && !process.env.JWT_ACCESS_SECRET && NODE_ENV !== 'test') {

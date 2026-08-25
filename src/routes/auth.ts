@@ -24,8 +24,8 @@ const router = Router();
 const REFRESH_COOKIE = 'refreshToken';
 
 const credentialsLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
+  windowMs: config.rateLimitWindowMs,
+  max: config.credentialsRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => config.isTest,
@@ -50,8 +50,8 @@ router.post(
   '/register',
   credentialsLimiter,
   validateBody(registerSchema),
-  asyncHandler(async (req, res) => {
-    const { username, email, password } = req.body as RegisterInput;
+  asyncHandler<RegisterInput>(async (req, res) => {
+    const { username, email, password } = req.body;
 
     const user = await User.create({ username, email, password });
 
@@ -71,8 +71,8 @@ router.post(
   '/login',
   credentialsLimiter,
   validateBody(loginSchema),
-  asyncHandler(async (req, res) => {
-    const { email, password } = req.body as LoginInput;
+  asyncHandler<LoginInput>(async (req, res) => {
+    const { email, password } = req.body;
 
     const user = await User.findOne({ email }).select('+password').exec();
 

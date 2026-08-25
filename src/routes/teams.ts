@@ -25,11 +25,8 @@ const router = Router();
 router.post(
   '/',
   validateBody(createTeamSchema),
-  asyncHandler(async (req, res) => {
-    const team = await createTeam(
-      currentUser(req),
-      req.body as CreateTeamInput
-    );
+  asyncHandler<CreateTeamInput>(async (req, res) => {
+    const team = await createTeam(currentUser(req), req.body);
     res.status(201).json(team);
   })
 );
@@ -66,12 +63,8 @@ router.get(
 router.put(
   '/:id',
   validateBody(updateTeamSchema),
-  asyncHandler(async (req, res) => {
-    const team = await updateTeam(
-      currentUser(req),
-      req.params.id,
-      req.body as UpdateTeamInput
-    );
+  asyncHandler<UpdateTeamInput>(async (req, res) => {
+    const team = await updateTeam(currentUser(req), req.params.id, req.body);
     res.json(team);
   })
 );

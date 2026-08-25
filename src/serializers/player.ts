@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import type { PlayerPosition } from '../models/Player';
+import type { IPlayer, PlayerPosition } from '../models/Player';
 
 const TEAM_FIELDS = 'uuid name coach';
 
@@ -27,3 +27,7 @@ export const populatePlayers = async (
   query: mongoose.Query<unknown, unknown>
 ): Promise<PlayerView[]> =>
   (await query.populate('team', TEAM_FIELDS).lean()) as unknown as PlayerView[];
+
+/** Populates a document already in hand, avoiding a refetch by id. */
+export const serializePlayer = async (doc: IPlayer): Promise<PlayerView> =>
+  (await doc.populate('team', TEAM_FIELDS)).toObject() as unknown as PlayerView;

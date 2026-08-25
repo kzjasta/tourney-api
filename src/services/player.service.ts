@@ -4,7 +4,7 @@ import { idQuery } from '../lib/idQuery';
 import { resolveId } from '../lib/resolveId';
 import Player, { IPlayer } from '../models/Player';
 import Team from '../models/Team';
-import { populatePlayer, populatePlayers } from '../serializers/player';
+import { populatePlayers, serializePlayer } from '../serializers/player';
 import type { CreatePlayerInput, UpdatePlayerInput } from '../schemas/player';
 import { isAdmin } from '../lib/authorization';
 import { assertTeamOwner, ownedTeamIds } from './ownership';
@@ -55,7 +55,7 @@ export const createPlayer = async (
     createdBy: auth.id,
   });
 
-  return populatePlayer(Player.findById(player._id));
+  return serializePlayer(player);
 };
 
 export const listPlayers = async (
@@ -82,7 +82,7 @@ export const listPlayers = async (
 
 export const getPlayer = async (auth: AuthUser, id: string) => {
   const player = await findAccessiblePlayer(id, auth);
-  return populatePlayer(Player.findById(player._id));
+  return serializePlayer(player);
 };
 
 export const updatePlayer = async (
@@ -115,7 +115,7 @@ export const updatePlayer = async (
 
   await player.save();
 
-  return populatePlayer(Player.findById(player._id));
+  return serializePlayer(player);
 };
 
 export const deletePlayer = async (auth: AuthUser, id: string) => {

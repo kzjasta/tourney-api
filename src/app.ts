@@ -15,8 +15,8 @@ app.use(helmet());
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
 app.use(
   rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
+    windowMs: config.rateLimitWindowMs,
+    max: config.rateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
     skip: () => config.isTest,
