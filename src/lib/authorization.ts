@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { HttpError } from './httpError';
-import type { AuthUser } from '../types/express';
+import type { AuthUser } from '../types/auth';
 
 export const isAdmin = (user: AuthUser): boolean => user.role === 'admin';
 

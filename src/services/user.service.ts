@@ -5,7 +5,7 @@ import User from '../models/User';
 import Team from '../models/Team';
 import type { UpdateUserInput } from '../schemas/user';
 import { assertSelfOrAdmin } from '../lib/authorization';
-import type { AuthUser } from '../types/express';
+import type { AuthUser } from '../types/auth';
 
 const PUBLIC_FIELDS = 'uuid username email role';
 

@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { HttpError } from '../lib/httpError';
 import { verifyAccessToken } from '../lib/tokens';
 import { UserRole } from '../models/User';
-import type { AuthUser } from '../types/express';
+import type { AuthUser } from '../types/auth';
 
 const readBearerToken = (req: Request): string | null => {
   const header = req.headers.authorization;

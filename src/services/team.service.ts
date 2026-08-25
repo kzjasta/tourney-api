@@ -8,7 +8,7 @@ import User from '../models/User';
 import { populateTeam } from '../serializers/team';
 import type { CreateTeamInput, UpdateTeamInput } from '../schemas/team';
 import { isAdmin } from '../lib/authorization';
-import type { AuthUser } from '../types/express';
+import type { AuthUser } from '../types/auth';
 
 export const addPlayerToTeam = (
   teamId: mongoose.Types.ObjectId,

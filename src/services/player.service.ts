@@ -13,7 +13,7 @@ import {
   removePlayerFromTeam,
   syncTeamPlayers,
 } from './team.service';
-import type { AuthUser } from '../types/express';
+import type { AuthUser } from '../types/auth';
 
 /** Access is granted to the player's creator, to the owner of its team, or to admins. */
 const canAccessPlayer = async (

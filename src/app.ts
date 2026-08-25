@@ -6,11 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { config } from './config/env';
-import authRouter from './routes/auth';
-import playersRouter from './routes/players';
-import teamsRouter from './routes/teams';
-import usersRouter from './routes/users';
-import { requireAuth } from './middleware/auth';
+import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -34,19 +30,9 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', db: mongoose.connection.readyState });
 });
 
-app.use('/auth', authRouter);
-app.use('/players', requireAuth, playersRouter);
-app.use('/teams', requireAuth, teamsRouter);
-app.use('/users', requireAuth, usersRouter);
+app.use(routes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
-
-if (config.mongodbUri) {
-  mongoose
-    .connect(config.mongodbUri)
-    .then(() => console.log('MongoDB connected'))
-    .catch(err => console.error('MongoDB connection error:', err));
-}
 
 export { app };
