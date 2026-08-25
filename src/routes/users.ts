@@ -1,5 +1,6 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { parsePagination } from '../lib/pagination';
+import { asyncHandler } from '../lib/asyncHandler';
 import { updateUserSchema, type UpdateUserInput } from '../schemas/user';
 import { validateBody } from '../middleware/validate';
 import { currentUser, requireRole } from '../middleware/auth';
@@ -30,27 +31,22 @@ const userResponse = (user: {
 router.get(
   '/',
   requireRole('admin'),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const users = await listUsers(parsePagination(req.query));
-      res.json(users);
-    } catch (err: unknown) {
-      next(err);
-    }
-  }
+  asyncHandler(async (req, res) => {
+    const users = await listUsers(parsePagination(req.query));
+    res.json(users);
+  })
 );
 
 /**
  * GET /users/:id - Get one user by id (self or admin)
  */
-router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
+router.get(
+  '/:id',
+  asyncHandler(async (req, res) => {
     const user = await getUser(currentUser(req), req.params.id);
     res.json(userResponse(user as never));
-  } catch (err: unknown) {
-    next(err);
-  }
-});
+  })
+);
 
 /**
  * PUT /users/:id - Update user (self or admin; partial: username?, email?)
@@ -58,18 +54,14 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 router.put(
   '/:id',
   validateBody(updateUserSchema),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const user = await updateUser(
-        currentUser(req),
-        req.params.id,
-        req.body as UpdateUserInput
-      );
-      res.json(userResponse(user));
-    } catch (err: unknown) {
-      next(err);
-    }
-  }
+  asyncHandler(async (req, res) => {
+    const user = await updateUser(
+      currentUser(req),
+      req.params.id,
+      req.body as UpdateUserInput
+    );
+    res.json(userResponse(user));
+  })
 );
 
 /**
@@ -77,14 +69,10 @@ router.put(
  */
 router.delete(
   '/:id',
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      await deleteUser(currentUser(req), req.params.id);
-      res.status(204).send();
-    } catch (err: unknown) {
-      next(err);
-    }
-  }
+  asyncHandler(async (req, res) => {
+    await deleteUser(currentUser(req), req.params.id);
+    res.status(204).send();
+  })
 );
 
 export default router;
