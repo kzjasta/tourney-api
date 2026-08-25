@@ -4,6 +4,7 @@ import { asyncHandler } from '../lib/asyncHandler';
 import { updateUserSchema, type UpdateUserInput } from '../schemas/user';
 import { validateBody } from '../middleware/validate';
 import { currentUser, requireRole } from '../middleware/auth';
+import { toPublicUser } from '../serializers/user';
 import {
   deleteUser,
   getUser,
@@ -13,18 +14,6 @@ import {
 
 const router = Router();
 
-const userResponse = (user: {
-  uuid: string;
-  username: string;
-  email: string;
-  role: string;
-}) => ({
-  uuid: user.uuid,
-  username: user.username,
-  email: user.email,
-  role: user.role,
-});
-
 /**
  * GET /users - List users (admin only; optional ?limit=, ?offset=)
  */
@@ -33,7 +22,7 @@ router.get(
   requireRole('admin'),
   asyncHandler(async (req, res) => {
     const users = await listUsers(parsePagination(req.query));
-    res.json(users);
+    res.json(users.map(toPublicUser));
   })
 );
 
@@ -44,7 +33,7 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const user = await getUser(currentUser(req), req.params.id);
-    res.json(userResponse(user as never));
+    res.json(toPublicUser(user));
   })
 );
 
@@ -60,7 +49,7 @@ router.put(
       req.params.id,
       req.body as UpdateUserInput
     );
-    res.json(userResponse(user));
+    res.json(toPublicUser(user));
   })
 );
 

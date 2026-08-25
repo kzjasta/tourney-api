@@ -17,6 +17,7 @@ import {
 } from '../schemas/auth';
 import { validateBody } from '../middleware/validate';
 import { currentUser, requireAuth } from '../middleware/auth';
+import { toPublicUser } from '../serializers/user';
 
 const router = Router();
 
@@ -29,18 +30,6 @@ const credentialsLimiter = rateLimit({
   legacyHeaders: false,
   skip: () => config.isTest,
   message: { error: 'Too many attempts, please try again later' },
-});
-
-const publicUser = (user: {
-  uuid: string;
-  username: string;
-  email: string;
-  role: string;
-}) => ({
-  uuid: user.uuid,
-  username: user.username,
-  email: user.email,
-  role: user.role,
 });
 
 const setRefreshCookie = (res: Response, token: string) => {
@@ -68,7 +57,7 @@ router.post(
 
     setRefreshCookie(res, signRefreshToken(user));
     res.status(201).json({
-      user: publicUser(user),
+      user: toPublicUser(user),
       accessToken: signAccessToken(user),
     });
   })
@@ -94,7 +83,7 @@ router.post(
 
     setRefreshCookie(res, signRefreshToken(user));
     res.json({
-      user: publicUser(user),
+      user: toPublicUser(user),
       accessToken: signAccessToken(user),
     });
   })
@@ -156,7 +145,7 @@ router.get(
     if (!user) {
       throw new HttpError(404, 'User not found');
     }
-    res.json(user);
+    res.json(toPublicUser(user));
   })
 );
 
