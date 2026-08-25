@@ -54,25 +54,20 @@ export const createUser = async (
 export const createTeam = (
   createdBy: mongoose.Types.ObjectId,
   name = 'Warriors'
-) => Team.create({ name, createdBy, players: [] });
+) => Team.create({ name, createdBy });
 
-export const createPlayer = async (
+export const createPlayer = (
   createdBy: mongoose.Types.ObjectId,
   team?: mongoose.Types.ObjectId,
   overrides: Record<string, unknown> = {}
-) => {
-  const player = await Player.create({
+) =>
+  Player.create({
     firstName: 'Jane',
     lastName: 'Doe',
     team: team ?? null,
     createdBy,
     ...overrides,
   });
-  if (team) {
-    await Team.updateOne({ _id: team }, { $addToSet: { players: player._id } });
-  }
-  return player;
-};
 
 /** Authorization header for a persisted user document. */
 export const tokenFor = (user: {

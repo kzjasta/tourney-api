@@ -1,6 +1,5 @@
 import request from 'supertest';
 import { app } from '../app';
-import Team from '../models/Team';
 import Player from '../models/Player';
 import {
   clearTestDb,
@@ -39,7 +38,7 @@ describe('Players routes', () => {
       expect(stored?.createdBy.toString()).toBe(user._id.toString());
     });
 
-    it('attaches the player to an owned team and updates the roster', async () => {
+    it('attaches the player to an owned team and lists them on its roster', async () => {
       const user = await createUser();
       const team = await createTeam(user._id);
 
@@ -51,8 +50,10 @@ describe('Players routes', () => {
       expect(res.status).toBe(201);
       expect(res.body.team.uuid).toBe(team.uuid);
 
-      const updatedTeam = await Team.findById(team._id).lean();
-      expect(updatedTeam?.players).toHaveLength(1);
+      const teamRes = await request(app)
+        .get(`/teams/${team.uuid}`)
+        .set('Authorization', tokenFor(user));
+      expect(teamRes.body.players).toHaveLength(1);
     });
 
     it('returns 403 when attaching to a team owned by someone else', async () => {
@@ -234,7 +235,7 @@ describe('Players routes', () => {
       expect(res.body.position).toBe('Libero');
     });
 
-    it('transfers a player between two owned teams and syncs both rosters', async () => {
+    it('transfers a player between two owned teams', async () => {
       const user = await createUser();
       const from = await createTeam(user._id, 'From');
       const to = await createTeam(user._id, 'To');
@@ -248,10 +249,8 @@ describe('Players routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.team.uuid).toBe(to.uuid);
 
-      const fromTeam = await Team.findById(from._id).lean();
-      const toTeam = await Team.findById(to._id).lean();
-      expect(fromTeam?.players).toHaveLength(0);
-      expect(toTeam?.players).toHaveLength(1);
+      const stored = await Player.findById(player._id).lean();
+      expect(stored?.team?.toString()).toBe(to._id.toString());
     });
 
     it('returns 403 when transferring to a team owned by someone else', async () => {
@@ -287,7 +286,7 @@ describe('Players routes', () => {
   });
 
   describe('DELETE /players/:id', () => {
-    it('deletes an accessible player and pulls them from the roster', async () => {
+    it('deletes an accessible player and drops them from the roster', async () => {
       const user = await createUser();
       const team = await createTeam(user._id);
       const player = await createPlayer(user._id, team._id);
@@ -299,8 +298,10 @@ describe('Players routes', () => {
       expect(res.status).toBe(204);
       expect(await Player.findById(player._id).lean()).toBeNull();
 
-      const team_ = await Team.findById(team._id).lean();
-      expect(team_?.players).toHaveLength(0);
+      const teamRes = await request(app)
+        .get(`/teams/${team.uuid}`)
+        .set('Authorization', tokenFor(user));
+      expect(teamRes.body.players).toHaveLength(0);
     });
 
     it('returns 404 for another user\u2019s player', async () => {

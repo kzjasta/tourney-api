@@ -131,7 +131,6 @@ const seed = async () => {
         name: teamData.name,
         coach: teamData.coach,
         createdBy: user._id,
-        players: [],
       });
       teams.push(team);
       console.log(`Team "${team.name}" created with ID: ${team.uuid}`);
@@ -140,7 +139,6 @@ const seed = async () => {
     // Create players for each team
     for (let teamIndex = 0; teamIndex < teams.length; teamIndex++) {
       const team = teams[teamIndex];
-      const teamPlayers = [];
 
       for (let playerIndex = 0; playerIndex < 6; playerIndex++) {
         const playerDataIndex = teamIndex * 6 + playerIndex;
@@ -152,15 +150,10 @@ const seed = async () => {
           createdBy: user._id,
         });
 
-        teamPlayers.push(player._id);
         console.log(
           `Player "${player.firstName} ${player.lastName}" created for team "${team.name}"`
         );
       }
-
-      // Update team with player references
-      team.players = teamPlayers;
-      await team.save();
     }
 
     console.log('Seed completed successfully!');

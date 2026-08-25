@@ -8,11 +8,6 @@ import { populatePlayer, populatePlayers } from '../serializers/player';
 import type { CreatePlayerInput, UpdatePlayerInput } from '../schemas/player';
 import { isAdmin } from '../lib/authorization';
 import { assertTeamOwner, ownedTeamIds } from './ownership';
-import {
-  addPlayerToTeam,
-  removePlayerFromTeam,
-  syncTeamPlayers,
-} from './team.service';
 import type { AuthUser } from '../types/auth';
 
 /** Access is granted to the player's creator, to the owner of its team, or to admins. */
@@ -59,10 +54,6 @@ export const createPlayer = async (
     team: teamId ?? undefined,
     createdBy: auth.id,
   });
-
-  if (teamId) {
-    await addPlayerToTeam(teamId, player._id);
-  }
 
   return populatePlayer(Player.findById(player._id));
 };
@@ -123,19 +114,12 @@ export const updatePlayer = async (
   });
 
   await player.save();
-  if (teamChanged) {
-    await syncTeamPlayers(player._id, oldTeamId, newTeamId);
-  }
 
   return populatePlayer(Player.findById(player._id));
 };
 
 export const deletePlayer = async (auth: AuthUser, id: string) => {
   const player = await findAccessiblePlayer(id, auth);
-
-  if (player.team) {
-    await removePlayerFromTeam(player.team, player._id);
-  }
 
   await Player.deleteOne({ _id: player._id }).exec();
 };

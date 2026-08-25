@@ -1,6 +1,7 @@
-import Team from '../../models/Team';
-import { addPlayerToTeam, syncTeamPlayers } from '../../services/team.service';
+import Player from '../../models/Player';
+import { deleteTeam, getTeam, listTeams } from '../../services/team.service';
 import {
+  authFor,
   clearTestDb,
   connectTestDb,
   createPlayer,
@@ -12,77 +13,86 @@ import {
 beforeAll(connectTestDb, 60000);
 afterAll(disconnectTestDb);
 beforeEach(clearTestDb);
-afterEach(() => jest.restoreAllMocks());
 
-const rosterOf = async (teamId: unknown) => {
-  const team = await Team.findById(teamId).lean();
-  return (team?.players ?? []).map(String);
-};
-
-describe('syncTeamPlayers', () => {
-  it('makes no writes when the team has not changed', async () => {
+describe('team rosters', () => {
+  it('derives the roster from Player.team', async () => {
     const user = await createUser();
     const team = await createTeam(user._id);
-    const player = await createPlayer(user._id, team._id);
-    const updateOne = jest.spyOn(Team, 'updateOne');
+    await createPlayer(user._id, team._id, { firstName: 'Ana' });
+    await createPlayer(user._id, team._id, { firstName: 'Bea' });
+    await createPlayer(user._id, undefined, { firstName: 'Unattached' });
 
-    await syncTeamPlayers(player._id, team._id, team._id);
+    const view = await getTeam(authFor(user), team.uuid);
 
-    expect(updateOne).not.toHaveBeenCalled();
-    expect(await rosterOf(team._id)).toEqual([player._id.toString()]);
+    expect(view.players.map(p => p.firstName).sort()).toEqual(['Ana', 'Bea']);
   });
 
-  it('moves the player between both rosters on a transfer', async () => {
+  it('returns an empty roster for a team with no players', async () => {
+    const user = await createUser();
+    const team = await createTeam(user._id);
+
+    const view = await getTeam(authFor(user), team.uuid);
+
+    expect(view.players).toEqual([]);
+  });
+
+  it('orders the roster by jersey number, unnumbered players last', async () => {
+    const user = await createUser();
+    const team = await createTeam(user._id);
+    await createPlayer(user._id, team._id, {
+      firstName: 'Ten',
+      jerseyNumber: 10,
+    });
+    await createPlayer(user._id, team._id, { firstName: 'None' });
+    await createPlayer(user._id, team._id, {
+      firstName: 'Two',
+      jerseyNumber: 2,
+    });
+
+    const view = await getTeam(authFor(user), team.uuid);
+
+    expect(view.players.map(p => p.firstName)).toEqual(['Two', 'Ten', 'None']);
+  });
+
+  it('keeps rosters separate when listing several teams', async () => {
+    const user = await createUser();
+    const a = await createTeam(user._id, 'A');
+    const b = await createTeam(user._id, 'B');
+    await createPlayer(user._id, a._id, { firstName: 'InA' });
+    await createPlayer(user._id, b._id, { firstName: 'InB' });
+
+    const teams = await listTeams(authFor(user));
+
+    const rosters = new Map(
+      teams.map(t => [t.name, t.players.map(p => p.firstName)])
+    );
+    expect(rosters.get('A')).toEqual(['InA']);
+    expect(rosters.get('B')).toEqual(['InB']);
+  });
+
+  it('reflects a transfer with no roster bookkeeping', async () => {
     const user = await createUser();
     const from = await createTeam(user._id, 'From');
     const to = await createTeam(user._id, 'To');
     const player = await createPlayer(user._id, from._id);
 
-    await syncTeamPlayers(player._id, from._id, to._id);
+    await Player.updateOne({ _id: player._id }, { team: to._id });
 
-    expect(await rosterOf(from._id)).toEqual([]);
-    expect(await rosterOf(to._id)).toEqual([player._id.toString()]);
-  });
-
-  it('removes the player when the new team is null', async () => {
-    const user = await createUser();
-    const team = await createTeam(user._id);
-    const player = await createPlayer(user._id, team._id);
-
-    await syncTeamPlayers(player._id, team._id, null);
-
-    expect(await rosterOf(team._id)).toEqual([]);
-  });
-
-  it('adds the player when the old team is null', async () => {
-    const user = await createUser();
-    const team = await createTeam(user._id);
-    const player = await createPlayer(user._id);
-
-    await syncTeamPlayers(player._id, null, team._id);
-
-    expect(await rosterOf(team._id)).toEqual([player._id.toString()]);
-  });
-
-  it('does nothing when both teams are null', async () => {
-    const user = await createUser();
-    const player = await createPlayer(user._id);
-    const updateOne = jest.spyOn(Team, 'updateOne');
-
-    await syncTeamPlayers(player._id, null, null);
-
-    expect(updateOne).not.toHaveBeenCalled();
+    expect((await getTeam(authFor(user), from.uuid)).players).toEqual([]);
+    expect((await getTeam(authFor(user), to.uuid)).players).toHaveLength(1);
   });
 });
 
-describe('addPlayerToTeam', () => {
-  it('does not duplicate a player already on the roster', async () => {
+describe('deleteTeam', () => {
+  it('detaches players rather than deleting them', async () => {
     const user = await createUser();
     const team = await createTeam(user._id);
     const player = await createPlayer(user._id, team._id);
 
-    await addPlayerToTeam(team._id, player._id);
+    await deleteTeam(authFor(user), team.uuid);
 
-    expect(await rosterOf(team._id)).toEqual([player._id.toString()]);
+    const stored = await Player.findById(player._id).lean();
+    expect(stored).not.toBeNull();
+    expect(stored?.team).toBeFalsy();
   });
 });

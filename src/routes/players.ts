@@ -63,7 +63,7 @@ router.get(
 );
 
 /**
- * PUT /players/:id - Update player (partial). Sync Team.players when team changes.
+ * PUT /players/:id - Update player (partial), including team reassignment.
  */
 router.put(
   '/:id',
@@ -79,7 +79,7 @@ router.put(
 );
 
 /**
- * DELETE /players/:id - Remove from team's players (if any), then delete player.
+ * DELETE /players/:id - Delete player.
  */
 router.delete(
   '/:id',

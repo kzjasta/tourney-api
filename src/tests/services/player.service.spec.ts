@@ -1,4 +1,4 @@
-import Team from '../../models/Team';
+import Player from '../../models/Player';
 import {
   getPlayer,
   listPlayers,
@@ -117,10 +117,8 @@ describe('updatePlayer', () => {
 
     await updatePlayer(authFor(user), player.uuid, { firstName: 'Renamed' });
 
-    const stored = await Team.findById(team._id).lean();
-    expect((stored?.players ?? []).map(String)).toEqual([
-      player._id.toString(),
-    ]);
+    const stored = await Player.findById(player._id).lean();
+    expect(stored?.team?.toString()).toBe(team._id.toString());
   });
 
   it('clears the team when team is null', async () => {
@@ -133,7 +131,7 @@ describe('updatePlayer', () => {
     });
 
     expect(updated?.team).toBeFalsy();
-    const stored = await Team.findById(team._id).lean();
-    expect(stored?.players ?? []).toEqual([]);
+    const stored = await Player.findById(player._id).lean();
+    expect(stored?.team).toBeFalsy();
   });
 });

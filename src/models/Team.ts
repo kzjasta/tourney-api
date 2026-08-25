@@ -4,7 +4,6 @@ import { randomUUID } from 'crypto';
 export interface ITeam extends Document {
   uuid: string;
   name: string;
-  players: mongoose.Types.ObjectId[];
   coach?: string;
   createdBy: mongoose.Types.ObjectId;
 }
@@ -22,12 +21,6 @@ const teamSchema = new Schema<ITeam>(
       required: true,
       trim: true,
     },
-    players: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: 'Player',
-      },
-    ],
     coach: {
       type: String,
       trim: true,
