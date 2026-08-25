@@ -6,7 +6,8 @@ import { HttpError } from '../lib/httpError';
 export const validateBody =
   <T>(schema: ZodType<T>) =>
   (req: Request, _res: Response, next: NextFunction) => {
-    const result = schema.safeParse(req.body);
+    // Express 5 leaves req.body undefined when no body was parsed.
+    const result = schema.safeParse(req.body ?? {});
     if (!result.success) {
       const [issue] = result.error.issues;
       return next(new HttpError(400, issue?.message ?? 'Invalid request body'));
